@@ -132,9 +132,7 @@ public class BotMessageReceiver {
         LUISService luisService = new LUISService();
         Optional<ResponseFromLUIS> responseFromLUIS = luisService.getResponseFromLUIS(inputMessage);
 
-        if (responseFromLUIS.isPresent()) {
-            ResponseFromLUIS luis = responseFromLUIS.get();
-
+        responseFromLUIS.ifPresent(luis -> { 
             String topIntent = luis.getTopScoringIntent().getIntent();
             LOGGER.log(Level.FINE, "TopIntent is : {0}", topIntent);
             // If I implment more, I need to write follows as Enumeration.
@@ -152,7 +150,7 @@ public class BotMessageReceiver {
                     execActionForNothing(requestMessage);
                     break;
             }
-        }
+        });
     }
 
     /**
@@ -195,16 +193,12 @@ public class BotMessageReceiver {
         List<Entity> entities = Arrays.asList(luis.getEntities());
         entities.stream()
                 .filter(ent -> ent.getType().equals("JSR-NAME-KEYWARD"))
-                .map(filterEnt -> {
-                    return filterEnt.getEntity();
-                })
-                .findFirst()
+                .map(Entity::getEntity)
+                .findAny()
                 .ifPresent((String keyword) -> {
                     final Configuration clientConfig = new ClientConfig(JacksonJsonProvider.class);
                     Client client = ClientBuilder.newClient(clientConfig);
-
                     WebTarget target = client.target(ENTRYPOINT_OF_JSR_AMBIGUOUS_SEARCH + keyword);
-
                     Response response = target
                             .request(MediaType.APPLICATION_JSON)
                             .accept(MediaType.APPLICATION_JSON)
@@ -212,8 +206,7 @@ public class BotMessageReceiver {
 
                     if (isRequestSuccess(response)) {
                         try {
-                            List<JSRResultJSONMapping> jsrList = response.readEntity(new GenericType<List<JSRResultJSONMapping>>() {
-                            });
+                            List<JSRResultJSONMapping> jsrList = response.readEntity(new GenericType<List<JSRResultJSONMapping>>() {});
                             sendMessageToBotFramework(requestMessage, "お探しの JSR は" + "「" + jsrList.size() + "」 ありました。");
 
                             jsrList.stream().forEach(jsr -> {
@@ -221,7 +214,7 @@ public class BotMessageReceiver {
                             });
 
                         } catch (Exception e) {
-                            Logger.getLogger(BotMessageReceiver.class.getName()).log(Level.SEVERE, null, e);
+                            LOGGER.log(Level.SEVERE, null, e);
                         }
                     } else {
                         String error = response.readEntity(String.class);
@@ -239,7 +232,7 @@ public class BotMessageReceiver {
      *
      * @param requestMessage messages from the clients
      * @param luis Response object from LUIS.
-     */    
+     */
     public void translateEnglish(MessageFromBotFrameWork requestMessage, ResponseFromLUIS luis) {
         List<Entity> entities = Arrays.asList(luis.getEntities());
         Integer jsrNumber = getJSRNumber(entities);
@@ -249,7 +242,7 @@ public class BotMessageReceiver {
             JSRResultJSONMapping result = response
                     .readEntity(JSRResultJSONMapping.class);
             String englishDescription = result.getDescription();
-            
+
             //Crete a instance of TranslatorTextServices
             TranslatorTextServices trans = new TranslatorTextServices();
             Optional<String> accessToken = trans.getAccessTokenForTranslator();
